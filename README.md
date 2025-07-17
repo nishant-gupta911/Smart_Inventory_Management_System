@@ -236,7 +236,19 @@ wallmart/
 - 💼 [LinkedIn](https://linkedin.com/in/nishant-gupta911)
 - 🐙 [GitHub](https://github.com/nishant-gupta911)
 
-### **Acknowledgments**
+## 👥 Contributors
+
+- **Nishant Gupta** — Lead Developer, Model Architect, Full Stack Integrator  
+- **Nikita Sachan** — Co-Researcher, Ideation Support, UI Feedback, Testing
+
+> Special thanks for her continuous encouragement and collaboration throughout the Sparkathon project 💡❤️
+
+## 💖 Acknowledgments
+
+Special thanks to **Nikita** for her valuable support, ideas, and collaboration during the development of this project.  
+Her help with brainstorming, reviewing UI, and testing made a huge impact on the final outcome.  
+This project wouldn't have been the same without her 💡🌟
+
 - 🙏 **Walmart Dataset**: Kaggle community for providing comprehensive retail data
 - 🎯 **Sparkathon 2025**: Organizing committee for the innovation platform
 - 🤝 **Open Source Community**: Contributors to scikit-learn, Streamlit, and Plotly
