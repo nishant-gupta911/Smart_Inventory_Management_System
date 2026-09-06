@@ -46,7 +46,7 @@ class RestockPlanGenerator:
             'DISCOUNT_THRESHOLD': 0.5,
             'HIGH_PRIORITY_FAMILIES': ['GROCERY I', 'BEVERAGES', 'DAIRY'],
             'PATHS': {
-                'input_data': 'data/interim/cleaned_inventory_data.csv',
+                'input_data': 'data/cleaned_inventory_data.csv',
                 'demand_model': 'models/demand_forecast_model.pkl',
                 'expiry_model': 'models/expiry_predict_model.pkl',
                 'output_dir': 'data/processed',
@@ -64,7 +64,25 @@ class RestockPlanGenerator:
         """Load and validate input data."""
         try:
             logger.info("Loading preprocessed data...")
-            df = pd.read_csv(self.config['PATHS']['input_data'])
+
+            # Try the configured path first, then fall back to known-good locations
+            candidate_paths = [
+                self.config['PATHS']['input_data'],
+                'data/cleaned_inventory_data.csv',
+                'cleaned_inventory_data.csv',
+            ]
+
+            df = None
+            for path in candidate_paths:
+                if os.path.exists(path):
+                    df = pd.read_csv(path)
+                    logger.info(f"Loaded data from: {path}")
+                    break
+
+            if df is None:
+                raise FileNotFoundError(
+                    f"Could not find input data. Tried: {candidate_paths}"
+                )
 
             # Validate required columns
             required_cols = ['date', 'store_nbr', 'item_nbr', 'unit_sales', 'family']

@@ -1,0 +1,49 @@
+=================================================================
+  EXPIRY RISK MODEL — EVALUATION REPORT
+  Model: VotingClassifier (XGBoost + LightGBM + RandomForest)
+=================================================================
+
+Sample Size : 260,643 rows | 9 features
+Classes     : ['Safe', 'Near Expiry', 'Expired']
+
+─────────────────────────────────────────────────────────────────
+OVERALL METRICS
+─────────────────────────────────────────────────────────────────
+  Accuracy           : 0.9669  (96.69%)
+  Weighted Precision : 0.9669
+  Weighted Recall    : 0.9669
+  Weighted F1-Score  : 0.9660
+  ROC-AUC (weighted) : 0.1706
+
+─────────────────────────────────────────────────────────────────
+CROSS-VALIDATION (5-fold accuracy)
+─────────────────────────────────────────────────────────────────
+  Fold scores : [0.9658, 0.9665, 0.9681, 0.9669, 0.9674]
+  Mean        : 0.9669  (96.69%)
+  Std Dev     : 0.0008
+
+─────────────────────────────────────────────────────────────────
+FULL CLASSIFICATION REPORT
+─────────────────────────────────────────────────────────────────
+              precision    recall  f1-score   support
+
+        Safe       0.97      0.99      0.98    180443
+ Near Expiry       0.97      0.79      0.87     19272
+     Expired       0.97      0.95      0.96     60928
+
+    accuracy                           0.97    260643
+   macro avg       0.97      0.91      0.93    260643
+weighted avg       0.97      0.97      0.97    260643
+
+─────────────────────────────────────────────────────────────────
+FEATURES USED
+─────────────────────────────────────────────────────────────────
+  1. rolling_avg_sales_7
+  2. perishable
+  3. shelf_life
+  4. stock_to_sales_ratio
+  5. sales_trend
+  6. rolling_avg_3
+  7. rolling_avg_14
+  8. current_stock
+  9. days_on_shelf

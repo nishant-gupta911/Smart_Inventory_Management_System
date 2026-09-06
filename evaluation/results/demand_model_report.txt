@@ -1,0 +1,40 @@
+=================================================================
+  DEMAND FORECAST MODEL — EVALUATION REPORT
+  Model: VotingRegressor (XGBoost + LightGBM + RandomForest)
+=================================================================
+
+Sample Size : 260,643 rows | 15 features
+
+─────────────────────────────────────────────────────────────────
+REGRESSION METRICS
+─────────────────────────────────────────────────────────────────
+  MAE   (Mean Absolute Error)          : 94.4906
+  RMSE  (Root Mean Squared Error)      : 312.2290
+  R²    (Coefficient of Determination) : 0.9158  (91.58%)
+  MAPE  (Mean Abs Percentage Error)    : 903.75%
+
+─────────────────────────────────────────────────────────────────
+CROSS-VALIDATION (5-fold R²)
+─────────────────────────────────────────────────────────────────
+  Fold scores : [0.9562, 0.826, 0.9521, 0.9388, 0.929]
+  Mean R²     : 0.9204  (92.04%)
+  Std Dev     : 0.0482
+
+─────────────────────────────────────────────────────────────────
+FEATURES USED
+─────────────────────────────────────────────────────────────────
+  1. rolling_avg_sales_7
+  2. rolling_avg_3
+  3. rolling_avg_14
+  4. sales_lag_1
+  5. sales_lag_7
+  6. sales_trend
+  7. onpromotion
+  8. day_of_week
+  9. month
+  10. is_weekend
+  11. quarter
+  12. store_nbr
+  13. cluster
+  14. perishable
+  15. dcoilwtico

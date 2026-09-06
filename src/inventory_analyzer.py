@@ -154,7 +154,38 @@ class InventoryAnalyzer:
         df['current_stock'] = df['current_stock'].clip(lower=0)
         df['rolling_avg_sales_7'] = df['rolling_avg_sales_7'].clip(lower=0)
         df['days_to_expiry'] = df['days_to_expiry'].clip(lower=0)
-        
+
+        # ── Input validation: unit_price and current_stock ─────────────────
+        # current_stock < 0 → already clipped above; log any that were fixed
+        bad_stock = (pd.to_numeric(df['current_stock'], errors='coerce').fillna(0) < 0).sum()
+        if bad_stock > 0:
+            logger.warning(f"⚠️  Validation: {bad_stock:,} negative current_stock values clipped to 0")
+            print(f"⚠️  Validation: corrected {bad_stock:,} rows with negative current_stock → 0")
+
+        # unit_price ≤ 0 → replace with category median (or global median)
+        bad_price_mask = df['unit_price'] <= 0
+        n_bad_price = int(bad_price_mask.sum())
+        if n_bad_price > 0:
+            cat_col = next((c for c in ['category', 'family'] if c in df.columns), None)
+            if cat_col:
+                cat_medians = df.loc[~bad_price_mask].groupby(cat_col)['unit_price'].median()
+                global_med = df.loc[~bad_price_mask, 'unit_price'].median()
+                if pd.isna(global_med):
+                    global_med = 1.0
+                df.loc[bad_price_mask, 'unit_price'] = df.loc[bad_price_mask, cat_col].map(
+                    cat_medians
+                ).fillna(global_med)
+            else:
+                global_med = df.loc[~bad_price_mask, 'unit_price'].median()
+                if pd.isna(global_med):
+                    global_med = 1.0
+                df.loc[bad_price_mask, 'unit_price'] = global_med
+            logger.warning(
+                f"⚠️  Validation: replaced {n_bad_price:,} invalid unit_price values with median"
+            )
+            print(f"⚠️  Validation: corrected {n_bad_price:,} rows with unit_price ≤ 0 → category median")
+        # ───────────────────────────────────────────────────────────────────
+
         logger.info(f"Data prepared: {len(df)} items across {df['store_nbr'].nunique()} stores")
         return df
     
@@ -185,21 +216,27 @@ class InventoryAnalyzer:
         return df
     
     def analyze_expiry_risk(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Analyze expiry risk based on days to expiry"""
+        """Analyze expiry risk based on days to expiry.
+
+        Standardized thresholds (single source of truth):
+          days_to_expiry >  15  → Safe
+          0 < days_to_expiry ≤ 15  → Near Expiry
+          -5 ≤ days_to_expiry ≤ 0  → Expired  (donation-eligible zone)
+          days_to_expiry < -5   → Remove  (too far expired)
+        """
         logger.info("⏰ Analyzing expiry risk...")
-        
-        # Categorize expiry risk
+
         conditions = [
-            df['days_to_expiry'] <= 0,
-            df['days_to_expiry'] <= self.near_expiry_days
+            df['days_to_expiry'] < -5,
+            df['days_to_expiry'] <= 0,   # covers -5 ≤ x ≤ 0
+            df['days_to_expiry'] <= 15,  # covers 0 < x ≤ 15
         ]
-        choices = ['Expired', 'Near Expiry']
+        choices = ['Remove', 'Expired', 'Near Expiry']
         df['Expiry_Risk'] = np.select(conditions, choices, default='Safe')
-        
-        # Log results
+
         expiry_counts = df['Expiry_Risk'].value_counts()
         logger.info(f"Expiry Risk Analysis: {expiry_counts.to_dict()}")
-        
+
         return df
     
     def calculate_discount_suggestions(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -262,39 +299,39 @@ class InventoryAnalyzer:
         return df
     
     def determine_actions(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Determine recommended actions for each item"""
+        """Determine recommended actions for each item.
+
+        Single source of truth for Action logic — thresholds:
+          days_to_expiry < -5              → Remove
+          -5 ≤ days_to_expiry ≤ -1
+              AND donation_eligible==True  → Donate
+          0 ≤ days_to_expiry ≤ 5          → Apply Discount
+          Stock_Level == 'Low'            → Restock
+          everything else                 → No Action
+        """
         logger.info("⚡ Determining recommended actions...")
-        
+
         def get_action(row):
-            # Priority 1: Expired items
-            if row['Expiry_Risk'] == 'Expired':
+            dte = row.get('days_to_expiry', 0)
+            donation_eligible = row.get('donation_eligible', False)
+            stock_level = row.get('Stock_Level', 'Normal')
+
+            if dte < -5:
                 return 'Remove'
-            
-            # Priority 2: Understocked items
-            elif row['Stock_Level'] == 'Low':
-                return 'Restock'
-            
-            # Priority 3: Overstocked items
-            elif row['Stock_Level'] == 'High':
-                if row['Expiry_Risk'] == 'Near Expiry':
-                    return 'Apply Discount'
-                else:
-                    return 'Redistribute'
-            
-            # Priority 4: Near expiry items
-            elif row['Expiry_Risk'] == 'Near Expiry' and row['Suggested_Discount'] > 0:
+            elif -5 <= dte <= -1 and donation_eligible:
+                return 'Donate'
+            elif 0 <= dte <= 5:
                 return 'Apply Discount'
-            
-            # Default: No action needed
+            elif stock_level == 'Low':
+                return 'Restock'
             else:
                 return 'No Action'
-        
+
         df['Action'] = df.apply(get_action, axis=1)
-        
-        # Log results
+
         action_counts = df['Action'].value_counts()
         logger.info(f"Action Recommendations: {action_counts.to_dict()}")
-        
+
         return df
     
     def generate_summary_report(self, df: pd.DataFrame) -> Dict:
@@ -420,58 +457,18 @@ class InventoryAnalyzer:
     
     def get_donation_summary(self, df: pd.DataFrame) -> Dict:
         """
-        Get comprehensive donation summary including totals, status counts, 
-        city/category breakdown, and top NGOs
+        Delegate to src.utils.get_donation_summary — the single authoritative implementation.
+        Kept as a method so existing callers (generate_summary_report, main, etc.) don't break.
         """
-        logger.info("🤝 Analyzing donation summary...")
-        
-        # Ensure donation columns exist
-        if 'donation_eligible' not in df.columns:
-            logger.warning("donation_eligible column not found, creating default values")
-            df['donation_eligible'] = df['Expiry_Risk'].isin(['Expired', 'Near Expiry'])
-        
-        if 'donation_status' not in df.columns:
-            logger.warning("donation_status column not found, creating default values")
-            # Set status based on expiry risk for simulation
-            df['donation_status'] = df.apply(lambda x: 
-                'Pending' if x['donation_eligible'] and x['Expiry_Risk'] == 'Near Expiry'
-                else 'Donated' if x['donation_eligible'] and x['Expiry_Risk'] == 'Expired' and np.random.random() > 0.3
-                else 'Rejected' if x['donation_eligible'] else 'N/A', axis=1)
-        
-        # Add missing location columns if not present
-        if 'city' not in df.columns:
-            df['city'] = np.random.choice(['New York', 'Los Angeles', 'Chicago', 'Houston', 'Phoenix'], len(df))
-        
-        if 'nearest_ngo' not in df.columns:
-            ngos = ['Food Bank Central', 'Helping Hands', 'Community Kitchen', 'Hope Foundation', 'Care Alliance']
-            df['nearest_ngo'] = np.random.choice(ngos, len(df))
-        
-        # Filter donation-eligible items
-        donation_eligible_df = df[df['donation_eligible'] == True]
-        
-        summary = {
-            'total_donation_eligible': len(donation_eligible_df),
-            'donation_status_counts': donation_eligible_df['donation_status'].value_counts().to_dict(),
-            'city_category_breakdown': {},
-            'top_ngos': {}
-        }
-        
-        # City and category breakdown
-        if len(donation_eligible_df) > 0:
-            city_category_pivot = donation_eligible_df.groupby(['city', 'category']).size().reset_index(name='count')
-            summary['city_category_breakdown'] = city_category_pivot.to_dict('records')
-            
-            # Top 5 NGOs receiving most donations
-            donated_items = donation_eligible_df[donation_eligible_df['donation_status'] == 'Donated']
-            if len(donated_items) > 0:
-                top_ngos = donated_items['nearest_ngo'].value_counts().head(5)
-                summary['top_ngos'] = top_ngos.to_dict()
-        
-        # Log summary
-        logger.info(f"Donation Summary: {summary['total_donation_eligible']} eligible items")
-        logger.info(f"Status distribution: {summary['donation_status_counts']}")
-        
-        return summary
+        try:
+            from src.utils import get_donation_summary as _utils_get_donation_summary
+        except ImportError:
+            # Fallback when running outside the src package context
+            import sys
+            sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
+            from utils import get_donation_summary as _utils_get_donation_summary
+
+        return _utils_get_donation_summary(df)
     
     def get_pending_donations(self, df: pd.DataFrame) -> pd.DataFrame:
         """

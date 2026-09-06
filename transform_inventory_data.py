@@ -29,6 +29,7 @@ Key features implemented:
 import pandas as pd
 import numpy as np
 import random
+from datetime import datetime
 
 # Set random seed for reproducibility
 np.random.seed(42)
@@ -199,32 +200,23 @@ def add_ngo_columns(df):
 
 def add_action_column(df):
     """
-    Add or update the Action column based on business rules:
-    
-    1. If days_to_expiry < -5: Action = "Remove" (too expired)
-    2. If -5 <= days_to_expiry <= -1 AND donation_eligible is True: Action = "Donate"
-    3. If 0 <= days_to_expiry <= 5: Action = "Apply Discount"
-    4. Else: Action = "Restock"
+    Delegate Action column computation to InventoryAnalyzer — the single source of truth.
+
+    Previously this function re-implemented Action logic here, causing conflicts with
+    inventory_analyzer.py.  Now it simply imports and calls the canonical implementation.
     """
-    # Always reset the Action column to ensure clean recalculation
-    df['Action'] = ''
-    
-    for idx, row in df.iterrows():
-        days_to_expiry = row['days_to_expiry']
-        donation_eligible = row.get('donation_eligible', False)
-        
-        if days_to_expiry < -5:
-            # Too expired to donate or sell
-            df.at[idx, 'Action'] = 'Remove'
-        elif -5 <= days_to_expiry <= -1 and donation_eligible:
-            # Recently expired but donation eligible
-            df.at[idx, 'Action'] = 'Donate'
-        elif 0 <= days_to_expiry <= 5:
-            # Near expiry, apply discount
-            df.at[idx, 'Action'] = 'Apply Discount'
-        else:
-            # All other cases: restock
-            df.at[idx, 'Action'] = 'Restock'
+    try:
+        from src.inventory_analyzer import InventoryAnalyzer
+        analyzer = InventoryAnalyzer()
+        df = analyzer.determine_actions(df)
+    except ImportError:
+        # Fallback if running outside the src package context (e.g. directly from root)
+        import sys, os
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
+        from inventory_analyzer import InventoryAnalyzer
+        analyzer = InventoryAnalyzer()
+        df = analyzer.determine_actions(df)
+    return df
 
 def transform_inventory_with_donation_logic(df):
     """
@@ -315,15 +307,17 @@ def generate_additional_rows(num_rows):
         stock_level = random.choice(['Low', 'Medium', 'High'])
         reorder = 'Yes' if random.random() > 0.6 else 'No'
         
-        # Determine Action based on business rules (no random choices)
+        # Determine Action using canonical thresholds (mirrors InventoryAnalyzer.determine_actions)
         if days_to_expiry < -5:
             action = 'Remove'
         elif -5 <= days_to_expiry <= -1 and donation_eligible:
             action = 'Donate'
         elif 0 <= days_to_expiry <= 5:
             action = 'Apply Discount'
-        else:
+        elif stock_level == 'Low':
             action = 'Restock'
+        else:
+            action = 'No Action'
         
         # Select NGO
         ngo = random.choice(INDIAN_NGOS)
@@ -331,11 +325,21 @@ def generate_additional_rows(num_rows):
         # Generate coordinates with variation
         lat_variation = random.uniform(-0.1, 0.1)
         lon_variation = random.uniform(-0.1, 0.1)
-        
+
+        # Standardized Expiry_Risk thresholds (matches inventory_analyzer.analyze_expiry_risk)
+        if days_to_expiry < -5:
+            expiry_risk = 'Remove'
+        elif days_to_expiry <= 0:
+            expiry_risk = 'Expired'
+        elif days_to_expiry <= 15:
+            expiry_risk = 'Near Expiry'
+        else:
+            expiry_risk = 'Safe'
+
         # Create row data
         row_data = {
             'id': 2000 + i,
-            'date': '2013-01-01',
+            'date': datetime.today().strftime('%Y-%m-%d'),
             'store_nbr': random.randint(1, 55),
             'family_x': random.choice(['GROCERY', 'DAIRY', 'MEATS', 'PRODUCE']),
             'sales': round(random.uniform(0, 1000), 2),
@@ -349,10 +353,10 @@ def generate_additional_rows(num_rows):
             'type': random.choice(['A', 'B', 'C', 'D']),
             'cluster': random.randint(1, 17),
             'type_y': random.choice(['Holiday', 'Work Day', '']),
-            'day_of_week': random.randint(1, 7),
-            'month': 1,
-            'year': 2013,
-            'is_weekend': random.choice([0, 1]),
+            'day_of_week': datetime.today().weekday() + 1,
+            'month': datetime.today().month,
+            'year': datetime.today().year,
+            'is_weekend': 1 if datetime.today().weekday() >= 5 else 0,
             'rolling_avg_sales_7': round(random.uniform(0, 500), 2),
             'days_on_shelf': random.randint(0, 30),
             'days_to_expiry': days_to_expiry,
@@ -361,7 +365,7 @@ def generate_additional_rows(num_rows):
             'unit_price': round(random.uniform(0.5, 50), 2),
             'category': category,
             'Stock_Level': stock_level,
-            'Expiry_Risk': 'Expired' if days_to_expiry < 0 else ('Near Expiry' if days_to_expiry <= 5 else 'Safe'),
+            'Expiry_Risk': expiry_risk,
             'Suggested_Discount': random.choice([0, 15, 25, 40, 50]) if days_to_expiry <= 5 else 0,
             'Reorder': reorder,
             'Action': action,

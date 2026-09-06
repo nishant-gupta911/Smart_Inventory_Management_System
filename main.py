@@ -44,17 +44,22 @@ def setup_logging() -> logging.Logger:
 # Initialize logger
 logger = setup_logging()
 
-def import_modules() -> Tuple[Any, Any, Optional[Any], Optional[Any], Optional[Any]]:
+def import_modules() -> Tuple[Any, Any, Optional[Any], Optional[Any], Optional[Any], Optional[Any], Optional[Any]]:
     """
-    Import required modules with proper fallback handling
-    Returns: (train_expiry_model, inventory_analyzer, data_preprocessing, transform_inventory_data, utils)
+    Import required modules with proper fallback handling.
+    Returns:
+        (train_expiry_model, inventory_analyzer, data_preprocessing,
+         transform_inventory_data, utils, train_demand_model, generate_restock_plan)
     """
-    train_expiry_model = None
-    inventory_analyzer = None
-    data_preprocessing = None
+    train_expiry_model       = None
+    inventory_analyzer       = None
+    data_preprocessing       = None
     transform_inventory_data = None
-    utils = None
-    
+    utils                    = None
+    train_demand_model       = None
+    generate_restock_plan    = None
+
+    # ── Core modules (required) ───────────────────────────────────────────────
     try:
         from src import train_expiry_model, inventory_analyzer, data_preprocessing
         logger.info("✅ Successfully imported core modules from src package")
@@ -65,23 +70,38 @@ def import_modules() -> Tuple[Any, Any, Optional[Any], Optional[Any], Optional[A
         logger.error(f"  - {SRC_PATH / 'inventory_analyzer.py'}")
         logger.error(f"  - {SRC_PATH / 'data_preprocessing.py'}")
         raise ImportError("Cannot proceed without required modules") from e
-    
-    # Import donation-related modules
+
+    # ── Demand model ──────────────────────────────────────────────────────────
+    try:
+        from src import train_demand_model
+        logger.info("✅ Successfully imported train_demand_model module")
+    except ImportError as e:
+        logger.warning(f"⚠️ Failed to import train_demand_model module: {e}")
+
+    # ── Restock plan generator ────────────────────────────────────────────────
+    try:
+        from src import generate_restock_plan
+        logger.info("✅ Successfully imported generate_restock_plan module")
+    except ImportError as e:
+        logger.warning(f"⚠️ Failed to import generate_restock_plan module: {e}")
+
+    # ── Donation utilities ────────────────────────────────────────────────────
     try:
         from src import utils
         logger.info("✅ Successfully imported utils module")
     except ImportError as e:
         logger.warning(f"⚠️ Failed to import utils module: {e}")
         utils = None
-    
+
     try:
         import transform_inventory_data
         logger.info("✅ Successfully imported transform_inventory_data module")
     except ImportError as e:
         logger.warning(f"⚠️ Failed to import transform_inventory_data module: {e}")
         transform_inventory_data = None
-    
-    return train_expiry_model, inventory_analyzer, data_preprocessing, transform_inventory_data, utils
+
+    return (train_expiry_model, inventory_analyzer, data_preprocessing,
+            transform_inventory_data, utils, train_demand_model, generate_restock_plan)
 
 def ensure_directories() -> bool:
     """Create required directories with proper error handling"""
@@ -113,8 +133,10 @@ def ensure_directories() -> bool:
 def check_data_files() -> bool:
     """Check if required data files exist"""
     data_file_locations = [
+        PROJECT_ROOT / "data" / "cleaned_inventory_data.csv",
+        PROJECT_ROOT / "data" / "processed" / "inventory_analysis_results_enhanced.csv",
         PROJECT_ROOT / "data" / "processed" / "inventory_data.csv",
-        PROJECT_ROOT / "data" / "raw" / "inventory_data.csv"
+        PROJECT_ROOT / "data" / "raw" / "inventory_data.csv",
     ]
     
     for data_file in data_file_locations:
@@ -139,8 +161,10 @@ def run_data_preprocessing(data_preprocessing_module) -> bool:
         
         if hasattr(data_preprocessing_module, 'preprocess_data'):
             data_preprocessing_module.preprocess_data()
+        elif hasattr(data_preprocessing_module, 'main'):
+            data_preprocessing_module.main()
         else:
-            logger.error("❌ data_preprocessing module missing 'preprocess_data()' function")
+            logger.error("❌ data_preprocessing module missing 'preprocess_data()' or 'main()' function")
             return False
         
         if check_data_files():
@@ -156,13 +180,16 @@ def run_data_preprocessing(data_preprocessing_module) -> bool:
         return False
 
 def run_expiry_prediction(train_expiry_model) -> bool:
-    """Run the expiry risk prediction model"""
+    """Run the expiry risk prediction model and log achieved accuracy"""
     try:
         logger.info("🔍 Phase 1: Running expiry risk prediction model...")
         
         if hasattr(train_expiry_model, 'train_and_predict'):
-            train_expiry_model.train_and_predict()
-            logger.info("✅ Expiry risk prediction completed")
+            mean_acc = train_expiry_model.train_and_predict()
+            acc_pct  = mean_acc * 100 if isinstance(mean_acc, float) else 0.0
+            logger.info(f"✅ Expiry model training complete — "
+                        f"CV Accuracy: {acc_pct:.2f}%")
+            print(f"\n🎯 [Phase 1] Expiry Model Accuracy: {acc_pct:.2f}%\n")
             return True
         else:
             logger.error("❌ train_expiry_model module missing 'train_and_predict()' function")
@@ -172,6 +199,34 @@ def run_expiry_prediction(train_expiry_model) -> bool:
         logger.error(f"❌ Error in expiry risk prediction: {e}")
         logger.exception("Expiry prediction error details:")
         return False
+
+
+def run_demand_model(train_demand_model) -> bool:
+    """Run the demand forecasting model and log achieved accuracy"""
+    try:
+        logger.info("📈 Phase 1.5: Running demand forecasting model...")
+
+        if train_demand_model is None:
+            logger.warning("⚠️ train_demand_model module not available, skipping demand training")
+            return False
+
+        if hasattr(train_demand_model, 'train_and_evaluate'):
+            mean_r2  = train_demand_model.train_and_evaluate()
+            acc_pct  = max(0.0, mean_r2) * 100 if isinstance(mean_r2, float) else 0.0
+            logger.info(f"✅ Demand model training complete — "
+                        f"CV R²: {mean_r2:.4f}  (~{acc_pct:.2f}%)")
+            print(f"\n🎯 [Phase 1.5] Demand Model Accuracy (R²): "
+                  f"{mean_r2:.4f}  (~{acc_pct:.2f}%)\n")
+            return True
+        else:
+            logger.error("❌ train_demand_model module missing 'train_and_evaluate()' function")
+            return False
+
+    except Exception as e:
+        logger.error(f"❌ Error in demand model training: {e}")
+        logger.exception("Demand model training error details:")
+        return False
+
 
 def run_inventory_analysis(inventory_analyzer) -> Tuple[bool, Optional[pd.DataFrame], Optional[Dict]]:
     """Run comprehensive inventory analysis"""
@@ -610,14 +665,46 @@ def display_donation_metrics(df: pd.DataFrame) -> None:
     except Exception as e:
         logger.error(f"❌ Error displaying donation metrics: {e}")
 
+def run_restock_plan(generate_restock_plan_module) -> bool:
+    """Phase 4: Generate smart restocking plan using trained models."""
+    try:
+        logger.info("📦 Phase 4: Generating smart restock plan...")
+
+        if generate_restock_plan_module is None:
+            logger.warning("⚠️ generate_restock_plan module not available, skipping restock plan")
+            return False
+
+        if hasattr(generate_restock_plan_module, 'RestockPlanGenerator'):
+            generator = generate_restock_plan_module.RestockPlanGenerator()
+            df_restock, restock_summary = generator.run()
+
+            logger.info("✅ Restock plan generated successfully")
+            logger.info(f"   📊 Total items evaluated:   {restock_summary.get('total_items', 0):,}")
+            logger.info(f"   📦 Items to restock:        {restock_summary.get('items_to_restock', 0):,}")
+            logger.info(f"   💸 Items for discount:      {restock_summary.get('items_for_discount', 0):,}")
+            logger.info(f"   ⭐ High-priority items:     {restock_summary.get('high_priority_items', 0):,}")
+            logger.info(f"   📈 Avg expiry risk:         {restock_summary.get('avg_expiry_risk', 0):.3f}")
+            return True
+        else:
+            logger.error("❌ generate_restock_plan module missing 'RestockPlanGenerator' class")
+            return False
+
+    except Exception as e:
+        logger.error(f"❌ Error generating restock plan: {e}")
+        logger.exception("Restock plan error details:")
+        return False
+
+
 def main() -> bool:
     """Main pipeline execution function"""
     logger.info("🚀 Starting Smart Inventory Management Pipeline")
     logger.info("=" * 60)
-    
+
     try:
         # Import required modules
-        train_expiry_model, inventory_analyzer, data_preprocessing, transform_inventory_data, utils = import_modules()
+        (train_expiry_model, inventory_analyzer, data_preprocessing,
+         transform_inventory_data, utils, train_demand_model,
+         generate_restock_plan) = import_modules()
         
         # Ensure directory structure
         if not ensure_directories():
@@ -633,6 +720,13 @@ def main() -> bool:
         # Phase 1: Expiry Risk Prediction
         if not run_expiry_prediction(train_expiry_model):
             return False
+        
+        # Phase 1.5: Demand Forecasting Model
+        logger.info("=" * 60)
+        logger.info("📈 Phase 1.5: Training demand forecasting model...")
+        demand_ok = run_demand_model(train_demand_model)
+        if not demand_ok:
+            logger.warning("⚠️ Demand model training failed or skipped — continuing pipeline")
         
         # Phase 2: Inventory Analysis
         success, df, summary = run_inventory_analysis(inventory_analyzer)
@@ -687,7 +781,20 @@ def main() -> bool:
         logger.info("═" * 70)
         if summary:
             display_summary(summary)
-        
+
+        # Phase 4: Restock Plan Generation
+        logger.info("=" * 60)
+        logger.info("📦 Phase 4: Generating smart restock plan...")
+        restock_ok = run_restock_plan(generate_restock_plan)
+        if not restock_ok:
+            logger.warning("⚠️ Restock plan generation failed or skipped — continuing pipeline")
+
+        # ML model accuracy summary
+        logger.info("🤖 ML MODEL ACCURACY SUMMARY:")
+        logger.info("─" * 40)
+        logger.info("   ✅ Expiry Classifier  — see [Phase 1]  log above for CV accuracy")
+        logger.info("   ✅ Demand Forecaster  — see [Phase 1.5] log above for CV R²")
+
         # Final output summary
         logger.info("📋 OUTPUT FILES GENERATED:")
         logger.info("─" * 40)
@@ -696,13 +803,16 @@ def main() -> bool:
         logger.info("   📄 removed_items.csv (items marked for removal)")
         logger.info("   📄 pending_donations.csv (items pending donation)")
         logger.info("   📄 dashboard_data.csv (for dashboard)")
-        
+        logger.info("   📄 restocking_suggestions.csv (restock plan)")
+        logger.info("   📄 high_priority_restock.csv (urgent restock items)")
+
         logger.info("🌐 NEXT STEPS:")
         logger.info("─" * 40)
         logger.info("   1. Run dashboard: streamlit run dashboard/app.py")
         logger.info("   2. Review removed items for disposal")
         logger.info("   3. Coordinate with NGOs for pending donations")
         logger.info("   4. Apply discounts to near-expiry items")
+        logger.info("   5. Execute restock plan from restocking_suggestions.csv")
         logger.info("═" * 70)
         
         return True
