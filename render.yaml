@@ -1,15 +1,11 @@
-{
-  "version": 1,
-  "builds": [
-    {
-      "src": "backend/app.py",
-      "use": "@vercel/python"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "backend/app.py"
-    }
-  ]
-}
+services:
+  - type: web
+    name: smart-inventory-api
+    env: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: PYTHON_VERSION
+        value: "3.10.12"

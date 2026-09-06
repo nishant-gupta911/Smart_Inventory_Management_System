@@ -316,7 +316,7 @@ function DashboardView({ fin, kpis, charts, loading }) {
   const catData    = charts?.category_risk   || [];
   const demand     = charts?.demand_forecast || [];
 
-  if (loading) return <LoadingBand />;
+  if (loading || !fin || !kpis) return <LoadingBand />;
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null;
@@ -373,18 +373,16 @@ function DashboardView({ fin, kpis, charts, loading }) {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16 }}>
-            <Metric label="Revenue from Discounts" value={fmt(fin.discRevenue)}  color={C.mint}     icon={DollarSign} />
-            <Metric label="Donated Goods Value"    value={fmt(fin.donatedVal)}   color={C.violet}   icon={Gift} />
-            <Metric label="Loss from Removals"     value={fmt(fin.removedVal)}   color={C.ember}    icon={Trash2}
-              delta={fin.removedVal > 0 ? fmt(fin.removedVal) : undefined} deltaPositive={false} />
-            <Metric label="Net Financial Impact"   value={fmt(fin.netImpact)}    color={fin.netImpact >= 0 ? C.carbon : C.ember}
-              icon={Activity} delta={fmt(Math.abs(fin.netImpact))} deltaPositive={fin.netImpact >= 0} />
+            <Metric label="Revenue from Discounts" value={fmt(fin.disc_revenue)}  color={C.mint}     icon={DollarSign} />
+            <Metric label="Donated Goods Value"    value={fmt(fin.donated_val)}   color={C.violet}   icon={Gift} />
+            <Metric label="Loss from Removals"     value={fmt(fin.removed_val)}   color={C.ember}    icon={Trash2} />
+            <Metric label="Net Financial Impact"   value={fmt(fin.net_impact)}    color={fin.net_impact >= 0 ? C.mint : C.ember} icon={TrendingUp} />
           </div>
 
-          {(fin.discRevenue + fin.donatedVal + fin.removedVal) > 0 && (
+          {(fin.disc_revenue + fin.donated_val + fin.removed_val) > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <Metric label="Value Recovery Rate"  value={`${fin.recoveryRate.toFixed(1)}%`} color={C.sky} icon={TrendingUp} />
-              <Metric label="Items Processed"      value={fin.itemsProcessed.toLocaleString()} color={C.lavender} icon={Package} />
+              <Metric label="Value Recovery Rate"  value={`${fin.recovery_rate.toFixed(1)}%`} color={C.sky} icon={TrendingUp} />
+              <Metric label="Items Processed"      value={fin.items_processed.toLocaleString()} color={C.lavender} icon={Package} />
             </div>
           )}
         </div>
@@ -402,15 +400,15 @@ function DashboardView({ fin, kpis, charts, loading }) {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 16 }}>
             <Metric label="Total Items"      value={kpis.total.toLocaleString()}       color={C.white}    icon={Package} />
-            <Metric label="Inventory Value"  value={fmt(kpis.totalVal)}                color={C.blue}     icon={DollarSign} />
-            <Metric label="High Risk Items"  value={kpis.highRisk.toLocaleString()}    color={C.ember}    icon={AlertTriangle} />
+            <Metric label="Inventory Value"  value={fmt(kpis.total_value)}             color={C.blue}     icon={DollarSign} />
+            <Metric label="High Risk Items"  value={kpis.high_risk.toLocaleString()}   color={C.ember}    icon={AlertTriangle} />
             <Metric label="Reorder Needed"   value={kpis.reorder.toLocaleString()}     color={C.sunburst} icon={ShoppingCart} />
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
             <Metric label="Overstocked"      value={kpis.overstock.toLocaleString()}   color={C.white}    icon={TrendingUp} />
             <Metric label="Understocked"     value={kpis.understock.toLocaleString()}  color={C.lavender} icon={TrendingDown} />
-            <Metric label="Near Expiry"      value={kpis.nearExpiry.toLocaleString()}  color={C.violet}   icon={AlertTriangle} />
-            <Metric label="Avg Discount"     value={`${kpis.avgDisc.toFixed(1)}%`}     color={C.white}    icon={Tag} />
+            <Metric label="Near Expiry"      value={kpis.near_expiry.toLocaleString()} color={C.violet}   icon={AlertTriangle} />
+            <Metric label="Avg Discount"     value={`${kpis.avg_discount.toFixed(1)}%`} color={C.white}    icon={Tag} />
           </div>
         </div>
       </section>
@@ -520,9 +518,9 @@ function DashboardView({ fin, kpis, charts, loading }) {
       <section style={{ background: C.carbon, padding: '40px 48px' }}>
         <div style={{ maxWidth: 1440, margin: '0 auto', display: 'flex', gap: 48, flexWrap: 'wrap', alignItems: 'center' }}>
           {[
-            { v: items.length.toLocaleString(), l: 'SKUs Tracked' },
-            { v: `${fin.recoveryRate.toFixed(0)}%`, l: 'Value Recovery' },
-            { v: fmt(fin.netImpact), l: 'Net Impact' },
+            { v: kpis.total.toLocaleString(), l: 'SKUs Tracked' },
+            { v: `${fin.recovery_rate.toFixed(0)}%`, l: 'Value Recovery' },
+            { v: fmt(fin.net_impact), l: 'Net Impact' },
             { v: kpis.reorder.toString(), l: 'Items to Reorder' },
           ].map((s, i) => (
             <React.Fragment key={s.l}>
