@@ -1228,6 +1228,7 @@ export default function App() {
   const [remove,    setRemove]    = useState(null);
   const [donations, setDonations] = useState(null);
   const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState(null);
   const [itemCount, setItemCount] = useState(0);
 
   // Fetch all data whenever filters change
@@ -1235,6 +1236,7 @@ export default function App() {
     let cancelled = false;
     async function load() {
       setLoading(true);
+      setError(null);
       try {
         const [k, f, c, u, d, r, rm, dn] = await Promise.all([
           fetchKPIs(filters),
@@ -1252,12 +1254,25 @@ export default function App() {
           setRemove(rm); setDonations(dn);
           setItemCount(k.total);
         }
-      } catch(e) { console.error('API error:', e); }
+      } catch(e) { 
+        console.error('API error:', e); 
+        if (!cancelled) setError(e.message || "Failed to connect to backend");
+      }
       finally { if (!cancelled) setLoading(false); }
     }
     load();
     return () => { cancelled = true; };
   }, [filters, donFilters]);
+
+  if (error) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20, background: 'var(--color-ember-wash)', color: 'var(--color-ember)' }}>
+        <h1 style={{ fontFamily: 'var(--font-lateral)', fontSize: 64, margin: 0 }}>API ERROR</h1>
+        <p style={{ fontWeight: 700, fontSize: 16 }}>{error}</p>
+        <p style={{ opacity: 0.7, maxWidth: 400, textAlign: 'center' }}>Check your VITE_API_URL environment variable in Vercel. Ensure it exactly matches your Render URL. You must redeploy after adding environment variables.</p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
